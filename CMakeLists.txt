@@ -3,7 +3,7 @@
 # #######################################
 
 # With TFT:
-OPTION(ESP32S3_HMI43V3 "TFT TARGET is ESP32S3 HMI 4.3inches" ON)
+OPTION(ESP32S3_HMI43V3 "TFT TARGET is ESP32S3 HMI 4.3inches" OFF)
 OPTION(ESP32_ROTRICS_DEXARM35 "TFT TARGET is ESP32 Rotrics DexArm 3.5inches" OFF)
 OPTION(ESP32S3_ZX3D50CE02S_USRC_4832 "TFT TARGET is ESP32S3 Panlee ZX3D50CE02S-SRC-4832 3.5inches" OFF)
 OPTION(ESP32S3_BZM_TFT35_GT911 "TFT TARGET is ESP32S3 Panlee BZM 3.5inches" OFF)
@@ -14,6 +14,7 @@ OPTION(ESP32S3_4827S043C "TFT TARGET is ESP32S3_4827S043C - 4.3in. 480x272 (Capa
 OPTION(ESP32_3248S035C "TFT TARGET is ESP32_3248S035C - 3.5in. 480x320 (Capacitive)" OFF)
 OPTION(ESP32_3248S035R "TFT TARGET is ESP32_3248S035R - 3.5in. 480x320 (Resistive)" OFF)
 OPTION(ESP32_2432S028R "TFT TARGET is ESP32_2432S028R - 2.8in. 320x240 (Resistive)" OFF)
+OPTION(ESP32_WAVESHARE_35 "TFT TARGET is ESP32 custom board w/ Waveshare 3.5in. 480x320 (Resistive)" ON)
 
 # Without TFT:
 OPTION(ESP32S3_FREENOVE_1_1 "HARDWARE TARGET is ESP32S3 Freenove v1.1" OFF)
@@ -53,13 +54,13 @@ OPTION(TIMESTAMP_ON_FILES "Time on file" OFF)
 OPTION(SSDP_SERVICE "SSDP service" ON)
 OPTION(MDNS_SERVICE "MDNS service" ON)
 OPTION(WIFI_SERVICE "WiFi service" ON)
-OPTION(BT_SERVICE "Bluetooth service" ON)
+OPTION(BT_SERVICE "Bluetooth service" OFF)
 OPTION(WEB_SERVICES "Web Services http/websocket" ON)
 OPTION(TELNET_SERVICE "Telnet service" ON)
 OPTION(WS_SERVICE "WebSocket data service" ON)
 OPTION(TFT_UI_SERVICE "TFT UI service" ON)
-OPTION(SD_CARD_SERVICE "SD card service" ON)
-OPTION(NOTIFICATIONS_SERVICE "Notifications service" ON)
+OPTION(SD_CARD_SERVICE "SD card service" OFF)
+OPTION(NOTIFICATIONS_SERVICE "Notifications service" OFF)
 OPTION(UPDATE_SERVICE "Update service" ON)
 OPTION(GCODE_HOST_SERVICE "GCode Streaming service" ON)
 OPTION(USE_FAT_INSTEAD_OF_LITTLEFS "Use FAT instead of LittleFS" OFF)
@@ -135,6 +136,11 @@ elseif(ESP32S3_BZM_TFT35_GT911)
     set(SDKCONFIG hardware/ESP32S3_BZM_TFT35_GT911/sdkconfig)
     set(EXTRA_COMPONENT_DIRS hardware/ESP32S3_BZM_TFT35_GT911/components)
     add_compile_options("-I${CMAKE_SOURCE_DIR}/hardware/ESP32S3_BZM_TFT35_GT911/components/bsp")
+elseif(ESP32_WAVESHARE_35)
+    set(TFT_TARGET "ESP32_WAVESHARE_35")
+    set(SDKCONFIG hardware/common/sdkconfig/ESP32/no_PSRAM/4MB_Flash)    
+    list(APPEND EXTRA_COMPONENT_DIRS hardware/ESP32_WAVESHARE_35/components)
+    add_compile_options("-I${CMAKE_SOURCE_DIR}/hardware/ESP32_WAVESHARE_35/components/bsp")
 elseif(ESP32S3_CUSTOM)
     set(TFT_TARGET "ESP32S3_CUSTOM")
     set(SDKCONFIG hardware/ESP32S3_CUSTOM/sdkconfig)
@@ -213,7 +219,7 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # All  = 2
 # Error only = 1
 # Disabled = 0
-add_compile_options(-DESP3D_TFT_LOG=0)
+add_compile_options(-DESP3D_TFT_LOG=2)
 # Disable ANSI color to fit some serial terminals 
 add_compile_options(-DDISABLE_COLOR_LOG=0)
 
