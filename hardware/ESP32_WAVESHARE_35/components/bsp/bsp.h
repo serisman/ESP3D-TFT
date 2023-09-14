@@ -32,11 +32,16 @@ extern "C" {
 /*********************
  *      DEFINES
  *********************/
+#if ESP3D_DISPLAY_FEATURE
+#define ESP3D_PATCH_SD_ACCESS_RELEASE 1
+#endif  // ESP3D_DISPLAY_FEATURE
 
 /**********************
  * GLOBAL PROTOTYPES
  **********************/
 esp_err_t bsp_init(void);
+esp_err_t bsp_accessSD(void);
+esp_err_t bsp_releaseSD(void);
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -22,6 +22,7 @@
 
 #include <stdio.h>
 
+#include "bsp.h"
 #include "esp3d_log.h"
 #include "esp3d_string.h"
 #include "sd_def.h"
@@ -42,6 +43,7 @@ ESP3DFileSystemType ESP3DSd::getFSType(const char* path) {
 
 bool ESP3DSd::accessFS(ESP3DFileSystemType FS) {
   (void)FS;
+
   // if card is busy do not let another task access SD and so prevent a release
   if (getState() != ESP3DSdState::idle) {
     esp3d_log("SDCard not idle");
@@ -49,20 +51,44 @@ bool ESP3DSd::accessFS(ESP3DFileSystemType FS) {
   }
   esp3d_log("Access SD");
   _state = ESP3DSdState::busy;
+#if ESP3D_PATCH_SD_ACCESS_RELEASE
+    esp3d_log("patch: bsp_accessSD");
+    if (ESP_OK != bsp_accessSD()) {
+      esp3d_log_e("Error accessing SD");
+    }
+#endif
   return true;
 }
 
 void ESP3DSd::releaseFS(ESP3DFileSystemType FS) {
   (void)FS;
   esp3d_log("Release SD");
-  setState(ESP3DSdState::idle);
+  _state = ESP3DSdState::idle;
+#if ESP3D_PATCH_SD_ACCESS_RELEASE
+  esp3d_log("patch: bsp_releaseSD");
+  if (ESP_OK != bsp_releaseSD()) {
+    esp3d_log_e("Error releasing SD");
+  }
+#endif
 }
 
 ESP3DSdState ESP3DSd::getState() {
   if (_state == ESP3DSdState::busy) {
     return _state;
   }
+#if ESP3D_PATCH_SD_ACCESS_RELEASE
+    esp3d_log("patch: bsp_accessSD");
+    if (ESP_OK != bsp_accessSD()) {
+      esp3d_log_e("Error accessing SD");
+    }
+#endif
   mount();
+#if ESP3D_PATCH_SD_ACCESS_RELEASE
+  esp3d_log("patch: bsp_releaseSD");
+  if (ESP_OK != bsp_releaseSD()) {
+    esp3d_log_e("Error releasing SD");
+  }
+#endif
   return _state;
 };
 

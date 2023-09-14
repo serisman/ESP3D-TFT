@@ -23,6 +23,8 @@
  *********************/
 #include "bsp.h"
 #include "esp3d_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #if ESP3D_DISPLAY_FEATURE
 #include "lvgl.h"
@@ -57,7 +59,10 @@ const spi_device_interface_config_t sd_spi_cfg = {
  *  STATIC PROTOTYPES
  **********************/
 #if ESP3D_DISPLAY_FEATURE
-void sd_init();
+static void sd_init();
+static void shared_spi_acquire();
+static void shared_spi_release();
+static void shared_spi_release_ISR();
 static bool disp_flush_ready(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx);
 static void lv_disp_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_color_t * color_p);
 static uint16_t touch_spi_read_reg12(uint8_t reg);
@@ -68,6 +73,7 @@ static void lv_touch_read(lv_indev_drv_t * drv, lv_indev_data_t * data);
  *  STATIC VARIABLES
  **********************/
 #if ESP3D_DISPLAY_FEATURE
+static SemaphoreHandle_t _shared_spi_sem;
 static spi_device_handle_t sd_spi;
 static lv_disp_drv_t disp_drv;
 static esp_lcd_panel_handle_t disp_panel;
@@ -84,10 +90,14 @@ static spi_device_handle_t touch_spi;
 
 esp_err_t bsp_init(void) {
 #if ESP3D_DISPLAY_FEATURE
+
+  _shared_spi_sem = xSemaphoreCreateBinary();
+  xSemaphoreGive(_shared_spi_sem);
+
   /* SPI master initialization */
   esp3d_log("Initializing SPI master (display,touch,sd)...");
   spi_bus_init(SHARED_SPI_HOST, SHARED_SPI_MISO, SHARED_SPI_MOSI, SHARED_SPI_CLK,
-               DISP_BUF_SIZE_BYTES, 1, -1, -1);  
+               DISP_BUF_SIZE_BYTES, 1, -1, -1);
 
   esp3d_log("Attaching sd card to SPI bus...");
   ESP_ERROR_CHECK(spi_bus_add_device(SHARED_SPI_HOST, &sd_spi_cfg, &sd_spi));
@@ -162,6 +172,20 @@ esp_err_t bsp_init(void) {
   return ESP_OK;
 }
 
+esp_err_t bsp_accessSD(void) {
+#if ESP3D_DISPLAY_FEATURE
+  shared_spi_acquire();
+#endif  // ESP3D_DISPLAY_FEATURE
+  return ESP_OK;
+}
+
+esp_err_t bsp_releaseSD(void) {
+#if ESP3D_DISPLAY_FEATURE
+  shared_spi_release();
+#endif  // ESP3D_DISPLAY_FEATURE
+  return ESP_OK;
+}
+
 /**********************
  *   STATIC FUNCTIONS
  **********************/
@@ -169,7 +193,7 @@ esp_err_t bsp_init(void) {
 
 #include "esp_vfs_fat.h"
 
-void sd_init() {
+static void sd_init() {
   sdmmc_host_t host = SDSPI_HOST_DEFAULT();
   sdmmc_card_t *card;
 
@@ -190,21 +214,34 @@ void sd_init() {
        * experiencing issues with SD cards.*/
       .disk_status_check_enable = true};
 
-  esp3d_log("Mounting filesystem cd:%d, wp:%d", slot_config.gpio_cd,
-            slot_config.gpio_wp);
-  esp_err_t ret = esp_vfs_fat_sdspi_mount("/", &host, &slot_config,
-                                          &mount_config, &card);
+  esp3d_log("Mounting filesystem cd:%d, wp:%d", slot_config.gpio_cd, slot_config.gpio_wp);
+  esp_err_t err = esp_vfs_fat_sdspi_mount("/", &host, &slot_config, &mount_config, &card);
+  if (err == ESP_OK) {
+    esp3d_log("Unmounting filesystem");
+    esp_vfs_fat_sdcard_unmount("/", card);
+  }
+}
 
-  esp_err_t err = esp_vfs_fat_sdcard_unmount("/", card);
-
+static void shared_spi_acquire() {
+  //esp3d_log("Shared SPI Mutex: Take");
+  xSemaphoreTake(_shared_spi_sem, portMAX_DELAY);
+}
+static void shared_spi_release() {
+  //esp3d_log("Shared SPI Mutex: Give");
+  xSemaphoreGive(_shared_spi_sem);
+}
+static void shared_spi_release_ISR() {
+  xSemaphoreGiveFromISR(_shared_spi_sem, NULL);
 }
 
 static bool disp_flush_ready(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx) {
+  shared_spi_release_ISR();
   lv_disp_flush_ready(&disp_drv);
   return false;
 }
 
 static void lv_disp_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_color_t * color_p) {
+  shared_spi_acquire();
   esp_lcd_panel_draw_bitmap(disp_panel, area->x1, area->y1, area->x2 + 1, area->y2 + 1, color_p);
 }
 
@@ -216,8 +253,10 @@ static uint16_t touch_spi_read_reg12(uint8_t reg) {
       .cmd = reg,
       .rx_buffer = data,
       .flags = 0
-  };	
-  ESP_ERROR_CHECK(spi_device_transmit(touch_spi, &t));	
+  };
+  shared_spi_acquire();
+  ESP_ERROR_CHECK(spi_device_transmit(touch_spi, &t));
+  shared_spi_release();
   return ((data[0] << 8) | data[1]) >> 3;
 }
 
