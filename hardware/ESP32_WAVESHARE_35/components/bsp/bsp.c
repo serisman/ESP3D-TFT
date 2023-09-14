@@ -27,6 +27,7 @@
 #if ESP3D_DISPLAY_FEATURE
 #include "lvgl.h"
 #include "shared_spi_def.h"
+#include "sd_def.h"
 #include "disp_def.h"
 #include "touch_def.h"
 #endif  // ESP3D_DISPLAY_FEATURE
@@ -34,6 +35,19 @@
 /*********************
  *      DEFINES
  *********************/
+
+const spi_device_interface_config_t sd_spi_cfg = {
+    .clock_speed_hz = 12*1000*1000,
+    .mode = 0,
+    .spics_io_num = 15, // GPIO 15
+    .queue_size = 1,
+    .pre_cb = NULL,
+    .post_cb = NULL,
+    .command_bits = 8,
+    .address_bits = 0,
+    .dummy_bits = 0,
+    .flags = SPI_DEVICE_HALFDUPLEX | SPI_DEVICE_NO_DUMMY,
+};
 
 /**********************
  *      TYPEDEFS
@@ -43,6 +57,7 @@
  *  STATIC PROTOTYPES
  **********************/
 #if ESP3D_DISPLAY_FEATURE
+void sd_init();
 static bool disp_flush_ready(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx);
 static void lv_disp_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_color_t * color_p);
 static uint16_t touch_spi_read_reg12(uint8_t reg);
@@ -53,6 +68,7 @@ static void lv_touch_read(lv_indev_drv_t * drv, lv_indev_data_t * data);
  *  STATIC VARIABLES
  **********************/
 #if ESP3D_DISPLAY_FEATURE
+static spi_device_handle_t sd_spi;
 static lv_disp_drv_t disp_drv;
 static esp_lcd_panel_handle_t disp_panel;
 static spi_device_handle_t touch_spi;
@@ -73,6 +89,9 @@ esp_err_t bsp_init(void) {
   spi_bus_init(SHARED_SPI_HOST, SHARED_SPI_MISO, SHARED_SPI_MOSI, SHARED_SPI_CLK,
                DISP_BUF_SIZE_BYTES, 1, -1, -1);  
 
+  esp3d_log("Attaching sd card to SPI bus...");
+  ESP_ERROR_CHECK(spi_bus_add_device(SHARED_SPI_HOST, &sd_spi_cfg, &sd_spi));
+
   esp3d_log("Attaching display panel to SPI bus...");
   esp_lcd_panel_io_handle_t disp_io_handle;
   disp_spi_cfg.on_color_trans_done = disp_flush_ready;  
@@ -81,6 +100,9 @@ esp_err_t bsp_init(void) {
 
   esp3d_log("Attaching touch controller to SPI bus...");
   ESP_ERROR_CHECK(spi_bus_add_device(SHARED_SPI_HOST, &touch_spi_cfg, &touch_spi));
+
+  /* SD initialization */
+  sd_init();
 
   /* Display panel initialization */
   esp3d_log("Initializing display...");
@@ -144,6 +166,38 @@ esp_err_t bsp_init(void) {
  *   STATIC FUNCTIONS
  **********************/
 #if ESP3D_DISPLAY_FEATURE
+
+#include "esp_vfs_fat.h"
+
+void sd_init() {
+  sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+  sdmmc_card_t *card;
+
+  host.slot = SD_SPI_HOST;
+  host.max_freq_khz = ESP3D_SD_FREQ;
+
+  sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+  slot_config.gpio_cs = (gpio_num_t)ESP3D_SD_CS_PIN;
+  slot_config.host_id = (spi_host_device_t)host.slot;
+  //esp3d_log("CS pin %d, host_id %d , Max Freq %d", slot_config.gpio_cs,
+  //          slot_config.host_id, host.max_freq_khz);  
+  esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+      .format_if_mount_failed = false,
+      .max_files = 2,
+      .allocation_unit_size = SPI_ALLOCATION_SIZE,
+      /** New IDF 5.0, Try to enable if you need to handle situations when SD
+       * cards are not unmounted properly before physical removal or you are
+       * experiencing issues with SD cards.*/
+      .disk_status_check_enable = true};
+
+  esp3d_log("Mounting filesystem cd:%d, wp:%d", slot_config.gpio_cd,
+            slot_config.gpio_wp);
+  esp_err_t ret = esp_vfs_fat_sdspi_mount("/", &host, &slot_config,
+                                          &mount_config, &card);
+
+  esp_err_t err = esp_vfs_fat_sdcard_unmount("/", card);
+
+}
 
 static bool disp_flush_ready(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx) {
   lv_disp_flush_ready(&disp_drv);

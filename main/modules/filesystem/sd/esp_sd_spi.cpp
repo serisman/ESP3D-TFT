@@ -111,14 +111,22 @@ const char *ESP3DSd::getFileSystemName() { return "SDFat native"; }
 
 bool ESP3DSd::begin() {
   _started = false;
-  esp_err_t ret;
   esp3d_log("Initializing SD card");
-#if ESP3D_TFT_LOG && ESP3D_TFT_LOG == 2
-  const char *spi_names[] = {"SPI1_HOST", "SPI2_HOST", "SPI3_HOST"};
-#endif  // ESP3D_TFT_LOG
+
 #if defined(SD_SPI_HOST)
   host.slot = SD_SPI_HOST;
 #endif  //
+
+  _spi_speed_divider =
+      esp3dTftsettings.readByte(ESP3DSettingIndex::esp3d_spi_divider);
+
+#if ESP3D_SD_IS_SHARED_SPI && ESP3D_DISPLAY_FEATURE
+  // Because of sharped SPI, this wire-up happens in bsp.c
+#else
+
+#if ESP3D_TFT_LOG && ESP3D_TFT_LOG == 2
+  const char *spi_names[] = {"SPI1_HOST", "SPI2_HOST", "SPI3_HOST"};
+#endif  // ESP3D_TFT_LOG
   esp3d_log("Configuring SPI host %s", spi_names[host.slot]);
   esp3d_log(
       "MISO pin: %d, MOSI pin: %d, SCLK pin: %d, IO2/WP pin: %d, IO3/HD pin: "
@@ -142,15 +150,14 @@ bool ESP3DSd::begin() {
       .intr_flags = 0,
   };
 
-  _spi_speed_divider =
-      esp3dTftsettings.readByte(ESP3DSettingIndex::esp3d_spi_divider);
-  ret = spi_bus_initialize((spi_host_device_t)host.slot, &bus_cfg,
+  esp_err_t ret = spi_bus_initialize((spi_host_device_t)host.slot, &bus_cfg,
                            SPI_DMA_CH_AUTO);
   if (ret != ESP_OK) {
     esp3d_log_e("Failed to initialize bus. %s", esp_err_to_name(ret));
 
     return false;
   }
+#endif  
   _started = true;
   return true;
 }
