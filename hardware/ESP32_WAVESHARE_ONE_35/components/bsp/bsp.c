@@ -59,7 +59,7 @@ const spi_device_interface_config_t sd_spi_cfg = {
  *  STATIC PROTOTYPES
  **********************/
 #if ESP3D_DISPLAY_FEATURE
-static void sd_init();
+//static void sd_init();
 static bool disp_flush_ready(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx);
 static void lv_disp_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_color_t * color_p);
 static uint16_t touch_spi_read_reg12(uint8_t reg);
@@ -126,7 +126,7 @@ esp_err_t bsp_init(void) {
   // NOTE: The SD card has to be initialized before any other SPI bus access,
   //    or else it might get locked into SD mode until a power cycle.
   // See: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/sdspi_share.html#initialization-sequence
-  sd_init();
+  //sd_init();
 
   /* Display panel initialization */
   esp3d_log("Initializing display...");
@@ -191,36 +191,36 @@ esp_err_t bsp_init(void) {
  **********************/
 #if ESP3D_DISPLAY_FEATURE
 
-#include "esp_vfs_fat.h"
+//#include "esp_vfs_fat.h"
 
-static void sd_init() {
-  sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-  sdmmc_card_t *card;
+// static void sd_init() {
+//   sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+//   sdmmc_card_t *card;
 
-  host.slot = SD_SPI_HOST;
-  host.max_freq_khz = ESP3D_SD_FREQ;
+//   host.slot = SD_SPI_HOST;
+//   host.max_freq_khz = ESP3D_SD_FREQ;
 
-  sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-  slot_config.gpio_cs = (gpio_num_t)ESP3D_SD_CS_PIN;
-  slot_config.host_id = (spi_host_device_t)host.slot;
-  //esp3d_log("CS pin %d, host_id %d , Max Freq %d", slot_config.gpio_cs,
-  //          slot_config.host_id, host.max_freq_khz);  
-  esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-      .format_if_mount_failed = false,
-      .max_files = 2,
-      .allocation_unit_size = SPI_ALLOCATION_SIZE,
-      /** New IDF 5.0, Try to enable if you need to handle situations when SD
-       * cards are not unmounted properly before physical removal or you are
-       * experiencing issues with SD cards.*/
-      .disk_status_check_enable = true};
+//   sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+//   slot_config.gpio_cs = (gpio_num_t)ESP3D_SD_CS_PIN;
+//   slot_config.host_id = (spi_host_device_t)host.slot;
+//   //esp3d_log("CS pin %d, host_id %d , Max Freq %d", slot_config.gpio_cs,
+//   //          slot_config.host_id, host.max_freq_khz);  
+//   esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+//       .format_if_mount_failed = false,
+//       .max_files = 2,
+//       .allocation_unit_size = SPI_ALLOCATION_SIZE,
+//       /** New IDF 5.0, Try to enable if you need to handle situations when SD
+//        * cards are not unmounted properly before physical removal or you are
+//        * experiencing issues with SD cards.*/
+//       .disk_status_check_enable = true};
 
-  esp3d_log("Mounting filesystem cd:%d, wp:%d", slot_config.gpio_cd, slot_config.gpio_wp);  
-  esp_err_t err = esp_vfs_fat_sdspi_mount("/init_sd", &host, &slot_config, &mount_config, &card);  
-  if (err == ESP_OK) {
-    esp3d_log("Unmounting filesystem");
-    esp_vfs_fat_sdcard_unmount("/init_sd", card);
-  }
-}
+//   esp3d_log("Mounting filesystem cd:%d, wp:%d", slot_config.gpio_cd, slot_config.gpio_wp);  
+//   esp_err_t err = esp_vfs_fat_sdspi_mount("/init_sd", &host, &slot_config, &mount_config, &card);  
+//   if (err == ESP_OK) {
+//     esp3d_log("Unmounting filesystem");
+//     esp_vfs_fat_sdcard_unmount("/init_sd", card);
+//   }
+// }
 
 static void bsp_release_shared_spi_bus_lock_ISR() {
   xSemaphoreGiveFromISR(_shared_spi_sem, NULL);
