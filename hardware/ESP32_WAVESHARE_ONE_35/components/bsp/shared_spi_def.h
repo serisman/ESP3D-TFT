@@ -1,4 +1,4 @@
-// Shared SPI definitions for ESP32_WAVESHARE_35
+// Shared SPI definitions for ESP32_WAVESHARE_ONE_35
 #pragma once
 #ifdef __cplusplus
 extern "C" {

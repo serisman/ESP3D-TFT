@@ -1,4 +1,4 @@
-// Serial definitions for ESP32_WAVESHARE_35
+// Serial definitions for ESP32_WAVESHARE_ONE_35
 // Serial (0)
 #pragma once
 

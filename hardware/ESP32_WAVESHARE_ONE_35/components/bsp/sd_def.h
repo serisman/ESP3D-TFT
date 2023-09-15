@@ -1,7 +1,6 @@
-// SD definitions for ESP32_WAVESHARE_35
+// SD definitions for ESP32_WAVESHARE_ONE_35
 // SD (SPI)
 #pragma once
-
 #ifdef __cplusplus
 extern "C" {
 #endif

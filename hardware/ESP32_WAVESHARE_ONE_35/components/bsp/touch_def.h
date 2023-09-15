@@ -1,4 +1,4 @@
-// Touch definitions for ESP32_WAVESHARE_35
+// Touch definitions for ESP32_WAVESHARE_ONE_35
 // Touch driver XPT2046 (SPI)
 #pragma once
 #ifdef __cplusplus
@@ -24,7 +24,7 @@ xpt2046_config_t xpt2046_cfg = {
     .invert_y = false,
 };
 
-// SPI (shared with Display)
+// SPI (shared with Display, SD)
 const spi_device_interface_config_t touch_spi_cfg = {
     .clock_speed_hz = 2*1000*1000,
     .mode = 0,

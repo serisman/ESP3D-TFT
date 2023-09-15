@@ -1,4 +1,4 @@
-// Display definitions for ESP32_WAVESHARE_35
+// Display definitions for ESP32_WAVESHARE_ONE_35
 // Display driver ILI9486 (SPI to 16-bit parallel)
 #pragma once
 #ifdef __cplusplus
@@ -46,7 +46,7 @@ esp_lcd_panel_dev_config_t disp_panel_cfg = {
     .bits_per_pixel = 16,
 };
 
-// SPI (shared with Touch)
+// SPI (shared with Touch, SD)
 // NOTE: Waveshare TFT w/ ILI9486 uses a SPI to 16-bit parallel bus that requires 16 clks even if only sending 8-bit cmd/param values
 esp_lcd_panel_io_spi_config_t disp_spi_cfg = {
     .dc_gpio_num = 4, // GPIO 4
