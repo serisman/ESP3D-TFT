@@ -130,6 +130,7 @@ const char *ESP3DSd::getFileSystemName() { return "SDFat native"; }
 
 bool ESP3DSd::begin() {
   _started = false;
+
   esp3d_log("Initializing SD card");
 
 #if defined(SD_SPI_HOST)
@@ -143,7 +144,7 @@ bool ESP3DSd::begin() {
   // Because of shared SPI, this wire-up happens in bsp.c
 #else
 
-#if ESP3D_TFT_LOG && ESP3D_TFT_LOG == 2
+#if ESP3D_TFT_LOG && ESP3D_TFT_LOG_LEVEL_ALL
   const char *spi_names[] = {"SPI1_HOST", "SPI2_HOST", "SPI3_HOST"};
 #endif  // ESP3D_TFT_LOG
   esp3d_log("Configuring SPI host %s", spi_names[host.slot]);
@@ -262,9 +263,9 @@ int ESP3DSd::stat(const char *filepath, struct stat *entry_stat) {
     dir_path += filepath;
   }
   _acquire_bus();
-  int err = ::stat(dir_path.c_str(), entry_stat);
-  // esp3d_log("Stat %s, %d", dir_path.c_str(), err);
+  int err = ::stat(dir_path.c_str(), entry_stat);  
   _release_bus();
+  // esp3d_log("Stat %s, %d", dir_path.c_str(), err);
   return err;
 }
 
