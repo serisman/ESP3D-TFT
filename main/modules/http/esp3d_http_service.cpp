@@ -800,7 +800,8 @@ esp_err_t ESP3DHttpService::streamFile(const char *path, httpd_req_t *req) {
           }
           size_t chunksize;
           do {
-            chunksize = fread(chunk, 1, CHUNK_BUFFER_SIZE, fd);
+            chunksize = globalFs.read(isGzip ? filenameGz.c_str() : filename.c_str(),
+                chunk, 1, CHUNK_BUFFER_SIZE, fd);
             if (chunksize > 0) {
               if (httpd_resp_send_chunk(req, chunk, chunksize) != ESP_OK) {
                 esp3d_log_e("File sending failed!");
@@ -809,7 +810,7 @@ esp_err_t ESP3DHttpService::streamFile(const char *path, httpd_req_t *req) {
               }
             }
           } while (chunksize != 0);
-          fclose(fd);
+          globalFs.close(fd, isGzip ? filenameGz.c_str() : filename.c_str());
           httpd_resp_send_chunk(req, NULL, 0);
         } else {
           res = ESP_ERR_NOT_FOUND;

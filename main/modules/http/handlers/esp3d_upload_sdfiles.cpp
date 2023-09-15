@@ -29,24 +29,6 @@
 #include "filesystem/esp3d_sd.h"
 #include "http/esp3d_http_service.h"
 
-static void _accessSD() {
-#if ESP3D_PATCH_SD_ACCESS_RELEASE
-  //esp3d_log("patch: bsp_accessSD");
-  if (ESP_OK != bsp_accessSD()) {
-    //esp3d_log_e("Error accessing SD");
-  }
-#endif
-}
-
-static void _releaseSD() {
-#if ESP3D_PATCH_SD_ACCESS_RELEASE
-  //esp3d_log("patch: bsp_releaseSD");
-  if (ESP_OK != bsp_releaseSD()) {
-    //esp3d_log_e("Error releasing SD");
-  }
-#endif
-}
-
 esp_err_t ESP3DHttpService::upload_to_sd_handler(
     const uint8_t* data, size_t datasize, ESP3DUploadState file_upload_state,
     const char* filename, size_t filesize) {
@@ -86,15 +68,11 @@ esp_err_t ESP3DHttpService::upload_to_sd_handler(
                                    "Error file creation failed");
         return ESP_FAIL;
       }
-      _releaseSD();
       break;
     case ESP3DUploadState::file_write:
       // esp3d_log("Write :%d bytes", datasize);
       if (datasize && FileFD) {
-        _accessSD();
-        size_t num_written = fwrite(data, datasize, 1, FileFD);
-        _releaseSD();
-        if (num_written != 1) {
+        if (sd.write(data, datasize, 1, FileFD) != 1) {
           esp3d_log_e("Error cannot writing data on sd filesystem ");
           esp3dHttpService.pushError(ESP3DUploadError::write_failed,
                                      "Error file write failed");
@@ -104,7 +82,6 @@ esp_err_t ESP3DHttpService::upload_to_sd_handler(
       break;
     case ESP3DUploadState::upload_end:
       esp3d_log("Ending upload");
-      _accessSD();
       sd.close(FileFD);
       FileFD = nullptr;
       if (filesize != (size_t)-1) {
@@ -135,7 +112,6 @@ esp_err_t ESP3DHttpService::upload_to_sd_handler(
       }
       FileFD = nullptr;
       if (isAccessed) {
-        _accessSD();
         sd.remove(filename);
         sd.releaseFS();
       }

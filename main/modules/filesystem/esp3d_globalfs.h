@@ -52,6 +52,8 @@ class ESP3DGlobalFileSystem final {
   void rewinddir(DIR *dirp);
   FILE *open(const char *filename, const char *mode);
   void close(FILE *fd, const char *filename);
+  size_t read(const char *filename, void *ptr, size_t size, size_t nmemb, FILE *stream);
+  size_t write(const char *filename, const void *ptr, size_t size, size_t nmemb, FILE *stream);
 
  private:
   struct dirent

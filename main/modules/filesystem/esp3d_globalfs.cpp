@@ -164,6 +164,7 @@ const char *ESP3DGlobalFileSystem::getFileSystemName(char *path) {
   }
   return "Unknown";
 }
+
 uint ESP3DGlobalFileSystem::maxPathLength(ESP3DFileSystemType fstype) {
   switch (fstype) {
     case ESP3DFileSystemType::root:
@@ -179,6 +180,7 @@ uint ESP3DGlobalFileSystem::maxPathLength(ESP3DFileSystemType fstype) {
   }
   return false;
 }
+
 bool ESP3DGlobalFileSystem::getSpaceInfo(uint64_t *totalBytes,
                                          uint64_t *usedBytes,
                                          uint64_t *freeBytes, const char *path,
@@ -471,4 +473,38 @@ void ESP3DGlobalFileSystem::close(FILE *fd, const char *filename) {
     default:
       break;
   }
+}
+
+size_t ESP3DGlobalFileSystem::read(const char *filename, void *ptr, size_t size, size_t nmemb, FILE *stream) {
+  ESP3DFileSystemType fstype = getFSType(filename);
+  switch (fstype) {
+    case ESP3DFileSystemType::root:
+      break;
+#if ESP3D_SD_CARD_FEATURE
+    case ESP3DFileSystemType::sd:
+      return sd.read(ptr, size, nmemb, stream);
+#endif  // ESP3D_SD_CARD_FEATURE
+    case ESP3DFileSystemType::flash:
+      return ::fread(ptr, size, nmemb, stream);      
+    default:
+      break;
+  }
+  return 0;
+}
+
+size_t ESP3DGlobalFileSystem::write(const char *filename, const void *ptr, size_t size, size_t nmemb, FILE *stream) {
+  ESP3DFileSystemType fstype = getFSType(filename);
+  switch (fstype) {
+    case ESP3DFileSystemType::root:
+      break;
+#if ESP3D_SD_CARD_FEATURE
+    case ESP3DFileSystemType::sd:
+      return sd.write(ptr, size, nmemb, stream);
+#endif  // ESP3D_SD_CARD_FEATURE
+    case ESP3DFileSystemType::flash:
+      return ::fwrite(ptr, size, nmemb, stream);      
+    default:
+      break;
+  }
+  return 0;
 }

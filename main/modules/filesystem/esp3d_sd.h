@@ -72,6 +72,8 @@ class ESP3DSd final {
   void rewinddir(DIR *dir);
   FILE *open(const char *filename, const char *mode);
   void close(FILE *fd);
+  size_t read(void *ptr, size_t size, size_t nmemb, FILE *stream);
+  size_t write(const void *ptr, size_t size, size_t nmemb, FILE *stream);
 
  private:
   bool _mounted;

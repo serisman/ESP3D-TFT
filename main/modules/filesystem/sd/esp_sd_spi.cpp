@@ -27,6 +27,7 @@
 #include <cstring>
 #include <string>
 
+#include "bsp.h"
 #include "esp3d_log.h"
 #include "esp3d_settings.h"
 #include "esp3d_string.h"
@@ -39,9 +40,24 @@
 #include "sdkconfig.h"
 #include "sdmmc_cmd.h"
 
-
 sdmmc_card_t *card;
 sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+
+static void _acquire_bus() {
+#if ESP3D_SD_IS_SHARED_SPI
+  if (ESP_OK != bsp_acquire_shared_spi_bus_lock()) {
+    esp3d_log_e("Error accessing SD bus");
+  }
+#endif
+}
+
+static void _release_bus() {
+#if ESP3D_SD_IS_SHARED_SPI  
+  if (ESP_OK != bsp_release_shared_spi_bus_lock()) {
+    esp3d_log_e("Error releasing SD bus");
+  }
+#endif
+}
 
 void ESP3DSd::unmount() {
   if (!_started) {
@@ -49,7 +65,9 @@ void ESP3DSd::unmount() {
     _state = ESP3DSdState::unknown;
     return;
   }
+  _acquire_bus();  
   esp_err_t err = esp_vfs_fat_sdcard_unmount(mount_point(), card);
+  _release_bus();
   if (ESP_OK != err) {
     esp3d_log_e("SDCard unmount failed:%s, it was previously : %s",
                 esp_err_to_name(err), _mounted ? "mounted" : "not mounted");
@@ -87,11 +105,12 @@ bool ESP3DSd::mount() {
        * experiencing issues with SD cards.*/
       .disk_status_check_enable = true};
 
-  esp3d_log("Mounting filesystem cd:%d, wp:%d", slot_config.gpio_cd,
-            slot_config.gpio_wp);
-  esp_err_t ret = esp_vfs_fat_sdspi_mount(mount_point(), &host, &slot_config,
-                                          &mount_config, &card);
-
+  esp3d_log("Mounting filesystem cd:%d, wp:%d",
+      slot_config.gpio_cd, slot_config.gpio_wp);
+  _acquire_bus();
+  esp_err_t ret = esp_vfs_fat_sdspi_mount(
+      mount_point(), &host, &slot_config, &mount_config, &card);
+  _release_bus();
   if (ret != ESP_OK) {
     _state = ESP3DSdState::not_present;
     if (ret == ESP_FAIL) {
@@ -121,7 +140,7 @@ bool ESP3DSd::begin() {
       esp3dTftsettings.readByte(ESP3DSettingIndex::esp3d_spi_divider);
 
 #if ESP3D_SD_IS_SHARED_SPI && ESP3D_DISPLAY_FEATURE
-  // Because of sharped SPI, this wire-up happens in bsp.c
+  // Because of shared SPI, this wire-up happens in bsp.c
 #else
 
 #if ESP3D_TFT_LOG && ESP3D_TFT_LOG == 2
@@ -177,12 +196,15 @@ bool ESP3DSd::getSpaceInfo(uint64_t *totalBytes, uint64_t *usedBytes,
     _usedBytes = 0;
     _freeBytes = 0;
   }
-  // no need to try if not  mounted
+  // no need to try if not mounted
   if ((_totalBytes == 0 || refreshStats) && _mounted) {
     FATFS *fs;
     DWORD fre_clust;
-    // we only have one SD card with one partiti0n so should be ok to use "0:"
-    if (f_getfree("0:", &fre_clust, &fs) == FR_OK) {
+    // we only have one SD card with one partition so should be ok to use "0:"
+    _acquire_bus();
+    FRESULT res = f_getfree("0:", &fre_clust, &fs);
+    _release_bus();
+    if (res == FR_OK) {
       _totalBytes = (fs->n_fatent - 2) * fs->csize;
       _freeBytes = fre_clust * fs->csize;
       _totalBytes = _totalBytes * (fs->ssize);
@@ -218,10 +240,18 @@ DIR *ESP3DSd::opendir(const char *dirpath) {
     dir_path += dirpath;
   }
   esp3d_log("openDir %s", dir_path.c_str());
-  return ::opendir(dir_path.c_str());
+  _acquire_bus();
+  DIR *ret = ::opendir(dir_path.c_str());
+  _release_bus();
+  return ret;
 }
 
-int ESP3DSd::closedir(DIR *dirp) { return ::closedir(dirp); }
+int ESP3DSd::closedir(DIR *dirp) {
+  _acquire_bus();
+  int ret = ::closedir(dirp);
+  _release_bus();
+  return ret;
+}
 
 int ESP3DSd::stat(const char *filepath, struct stat *entry_stat) {
   std::string dir_path = mount_point();
@@ -231,13 +261,16 @@ int ESP3DSd::stat(const char *filepath, struct stat *entry_stat) {
     }
     dir_path += filepath;
   }
-  // esp3d_log("Stat %s, %d", dir_path.c_str(), ::stat(dir_path.c_str(),
-  // entry_stat));
-  return ::stat(dir_path.c_str(), entry_stat);
+  _acquire_bus();
+  int err = ::stat(dir_path.c_str(), entry_stat);
+  // esp3d_log("Stat %s, %d", dir_path.c_str(), err);
+  _release_bus();
+  return err;
 }
 
 bool ESP3DSd::exists(const char *path) {
   struct stat entry_stat;
+  // This wraps the stat method above so no need to acquire the bus here
   if (stat(path, &entry_stat) == 0) {
     return true;
   } else {
@@ -253,7 +286,10 @@ bool ESP3DSd::remove(const char *path) {
     }
     file_path += path;
   }
-  return !::unlink(file_path.c_str());
+  _acquire_bus();
+  bool ret = !::unlink(file_path.c_str());
+  _release_bus();
+  return ret;
 }
 
 bool ESP3DSd::mkdir(const char *path) {
@@ -264,7 +300,10 @@ bool ESP3DSd::mkdir(const char *path) {
     }
     dir_path += path;
   }
-  return !::mkdir(dir_path.c_str(), 0777);
+  _acquire_bus();
+  bool ret = !::mkdir(dir_path.c_str(), 0777);
+  _release_bus();
+  return ret;
 }
 
 bool ESP3DSd::rmdir(const char *path) {
@@ -275,8 +314,12 @@ bool ESP3DSd::rmdir(const char *path) {
     }
     dir_path += path;
   }
-  return !::rmdir(dir_path.c_str());
+  _acquire_bus();
+  bool ret = !::rmdir(dir_path.c_str());
+  _release_bus();
+  return ret;
 }
+
 bool ESP3DSd::rename(const char *oldpath, const char *newpath) {
   std::string old_path = mount_point();
   std::string new_path = mount_point();
@@ -293,10 +336,13 @@ bool ESP3DSd::rename(const char *oldpath, const char *newpath) {
     new_path += newpath;
   }
   struct stat st;
+  _acquire_bus();
   if (::stat(new_path.c_str(), &st) == 0) {
     ::unlink(new_path.c_str());
   }
-  return !::rename(old_path.c_str(), new_path.c_str());
+  bool ret = !::rename(old_path.c_str(), new_path.c_str());
+  _release_bus();
+  return ret;
 }
 
 FILE *ESP3DSd::open(const char *filename, const char *mode) {
@@ -307,13 +353,43 @@ FILE *ESP3DSd::open(const char *filename, const char *mode) {
     }
     file_path += filename;
   }
-  return fopen(file_path.c_str(), mode);
+  _acquire_bus();
+  FILE *ret = ::fopen(file_path.c_str(), mode);
+  _release_bus();
+  return ret;
 }
 
-struct dirent *ESP3DSd::readdir(DIR *dir) { return ::readdir(dir); }
+struct dirent *ESP3DSd::readdir(DIR *dir) {
+  _acquire_bus();
+  dirent * ret = ::readdir(dir);
+  _release_bus();
+  return ret;
+}
 
-void ESP3DSd::rewinddir(DIR *dir) { ::rewinddir(dir); }
+void ESP3DSd::rewinddir(DIR *dir) {
+  _acquire_bus();
+  ::rewinddir(dir);
+  _release_bus();
+}
 
-void ESP3DSd::close(FILE *fd) { fclose(fd); }
+void ESP3DSd::close(FILE *fd) {
+  _acquire_bus();
+  ::fclose(fd);
+  _release_bus();
+}
+
+size_t ESP3DSd::read(void *ptr, size_t size, size_t nmemb, FILE *stream) {
+  _acquire_bus();
+  size_t ret = ::fread(ptr, size, nmemb, stream);
+  _release_bus();
+  return ret;
+}
+
+size_t ESP3DSd::write(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
+  _acquire_bus();
+  size_t ret = ::fwrite(ptr, size, nmemb, stream);
+  _release_bus();
+  return ret;
+}
 
 #endif  // ESP3D_SD_IS_SPI

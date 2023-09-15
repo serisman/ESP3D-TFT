@@ -60,9 +60,6 @@ const spi_device_interface_config_t sd_spi_cfg = {
  **********************/
 #if ESP3D_DISPLAY_FEATURE
 static void sd_init();
-static void shared_spi_acquire();
-static void shared_spi_release();
-static void shared_spi_release_ISR();
 static bool disp_flush_ready(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx);
 static void lv_disp_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_color_t * color_p);
 static uint16_t touch_spi_read_reg12(uint8_t reg);
@@ -88,6 +85,20 @@ static spi_device_handle_t touch_spi;
  *   GLOBAL FUNCTIONS
  **********************/
 
+esp_err_t bsp_acquire_shared_spi_bus_lock() {
+#if ESP3D_DISPLAY_FEATURE
+  xSemaphoreTake(_shared_spi_sem, portMAX_DELAY);
+#endif
+  return ESP_OK;
+}
+
+esp_err_t bsp_release_shared_spi_bus_lock() {
+#if ESP3D_DISPLAY_FEATURE
+  xSemaphoreGive(_shared_spi_sem);
+#endif
+  return ESP_OK;
+}
+
 esp_err_t bsp_init(void) {
 #if ESP3D_DISPLAY_FEATURE
 
@@ -104,7 +115,7 @@ esp_err_t bsp_init(void) {
 
   esp3d_log("Attaching display panel to SPI bus...");
   esp_lcd_panel_io_handle_t disp_io_handle;
-  disp_spi_cfg.on_color_trans_done = disp_flush_ready;  
+  disp_spi_cfg.on_color_trans_done = disp_flush_ready;
   ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(
       (esp_lcd_spi_bus_handle_t)SHARED_SPI_HOST, &disp_spi_cfg, &disp_io_handle));
 
@@ -112,6 +123,9 @@ esp_err_t bsp_init(void) {
   ESP_ERROR_CHECK(spi_bus_add_device(SHARED_SPI_HOST, &touch_spi_cfg, &touch_spi));
 
   /* SD initialization */
+  // NOTE: The SD card has to be initialized before any other SPI bus access,
+  //    or else it might get locked into SD mode until a power cycle.
+  // See: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/sdspi_share.html#initialization-sequence
   sd_init();
 
   /* Display panel initialization */
@@ -172,20 +186,6 @@ esp_err_t bsp_init(void) {
   return ESP_OK;
 }
 
-esp_err_t bsp_accessSD(void) {
-#if ESP3D_DISPLAY_FEATURE
-  shared_spi_acquire();
-#endif  // ESP3D_DISPLAY_FEATURE
-  return ESP_OK;
-}
-
-esp_err_t bsp_releaseSD(void) {
-#if ESP3D_DISPLAY_FEATURE
-  shared_spi_release();
-#endif  // ESP3D_DISPLAY_FEATURE
-  return ESP_OK;
-}
-
 /**********************
  *   STATIC FUNCTIONS
  **********************/
@@ -214,34 +214,26 @@ static void sd_init() {
        * experiencing issues with SD cards.*/
       .disk_status_check_enable = true};
 
-  esp3d_log("Mounting filesystem cd:%d, wp:%d", slot_config.gpio_cd, slot_config.gpio_wp);
-  esp_err_t err = esp_vfs_fat_sdspi_mount("/", &host, &slot_config, &mount_config, &card);
+  esp3d_log("Mounting filesystem cd:%d, wp:%d", slot_config.gpio_cd, slot_config.gpio_wp);  
+  esp_err_t err = esp_vfs_fat_sdspi_mount("/init_sd", &host, &slot_config, &mount_config, &card);  
   if (err == ESP_OK) {
     esp3d_log("Unmounting filesystem");
-    esp_vfs_fat_sdcard_unmount("/", card);
+    esp_vfs_fat_sdcard_unmount("/init_sd", card);
   }
 }
 
-static void shared_spi_acquire() {
-  //esp3d_log("Shared SPI Mutex: Take");
-  xSemaphoreTake(_shared_spi_sem, portMAX_DELAY);
-}
-static void shared_spi_release() {
-  //esp3d_log("Shared SPI Mutex: Give");
-  xSemaphoreGive(_shared_spi_sem);
-}
-static void shared_spi_release_ISR() {
+static void bsp_release_shared_spi_bus_lock_ISR() {
   xSemaphoreGiveFromISR(_shared_spi_sem, NULL);
 }
 
 static bool disp_flush_ready(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx) {
-  shared_spi_release_ISR();
+  bsp_release_shared_spi_bus_lock_ISR();
   lv_disp_flush_ready(&disp_drv);
   return false;
 }
 
 static void lv_disp_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_color_t * color_p) {
-  shared_spi_acquire();
+  bsp_acquire_shared_spi_bus_lock();
   esp_lcd_panel_draw_bitmap(disp_panel, area->x1, area->y1, area->x2 + 1, area->y2 + 1, color_p);
 }
 
@@ -254,9 +246,9 @@ static uint16_t touch_spi_read_reg12(uint8_t reg) {
       .rx_buffer = data,
       .flags = 0
   };
-  shared_spi_acquire();
+  bsp_acquire_shared_spi_bus_lock();
   ESP_ERROR_CHECK(spi_device_transmit(touch_spi, &t));
-  shared_spi_release();
+  bsp_release_shared_spi_bus_lock();
   return ((data[0] << 8) | data[1]) >> 3;
 }
 

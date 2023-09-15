@@ -363,7 +363,7 @@ bool ESP3DUpdateService::begin() {
   }
 #endif  // ESP3D_SD_CARD_FEATURE
   if (restart) {
-    esp3d_log("Restarting  firmware");
+    esp3d_log("Restarting firmware");
     vTaskDelay(pdMS_TO_TICKS(1000));
     esp_restart();
     while (1) {
@@ -428,7 +428,7 @@ bool ESP3DUpdateService::updateFW() {
     uint8_t progress = 0;
 #endif
     do {
-      chunksize = fread(chunk, 1, CHUNK_BUFFER_SIZE, fwFd);
+      chunksize = sd.read(chunk, 1, CHUNK_BUFFER_SIZE, fwFd);
       totalSize += chunksize;
       if (esp_ota_write(update_handle, (const void *)chunk, chunksize) !=
           ESP_OK) {
