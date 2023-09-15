@@ -110,7 +110,7 @@ esp_err_t bsp_init(void) {
   spi_bus_init(SHARED_SPI_HOST, SHARED_SPI_MISO, SHARED_SPI_MOSI, SHARED_SPI_CLK,
                DISP_BUF_SIZE_BYTES, 1, -1, -1);
 
-  esp3d_log("Attaching sd card to SPI bus...");
+  esp3d_log("Attaching SD card to SPI bus...");
   ESP_ERROR_CHECK(spi_bus_add_device(SHARED_SPI_HOST, &sd_spi_cfg, &sd_spi));
 
   esp3d_log("Attaching display panel to SPI bus...");
