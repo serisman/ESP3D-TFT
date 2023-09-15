@@ -23,10 +23,11 @@
  *********************/
 #include "bsp.h"
 #include "esp3d_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 
 #if ESP3D_DISPLAY_FEATURE
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include <driver/gpio.h>
 #include "lvgl.h"
 #include "shared_spi_def.h"
 #include "sd_def.h"
@@ -38,18 +39,18 @@
  *      DEFINES
  *********************/
 
-const spi_device_interface_config_t sd_spi_cfg = {
-    .clock_speed_hz = 12*1000*1000,
-    .mode = 0,
-    .spics_io_num = 15, // GPIO 15
-    .queue_size = 1,
-    .pre_cb = NULL,
-    .post_cb = NULL,
-    .command_bits = 8,
-    .address_bits = 0,
-    .dummy_bits = 0,
-    .flags = SPI_DEVICE_HALFDUPLEX | SPI_DEVICE_NO_DUMMY,
-};
+// const spi_device_interface_config_t sd_spi_cfg = {
+//     .clock_speed_hz = 12*1000*1000,
+//     .mode = 0,
+//     .spics_io_num = 15, // GPIO 15
+//     .queue_size = 1,
+//     .pre_cb = NULL,
+//     .post_cb = NULL,
+//     .command_bits = 8,
+//     .address_bits = 0,
+//     .dummy_bits = 0,
+//     .flags = SPI_DEVICE_HALFDUPLEX | SPI_DEVICE_NO_DUMMY,
+// };
 
 /**********************
  *      TYPEDEFS
@@ -71,7 +72,7 @@ static void lv_touch_read(lv_indev_drv_t * drv, lv_indev_data_t * data);
  **********************/
 #if ESP3D_DISPLAY_FEATURE
 static SemaphoreHandle_t _shared_spi_sem;
-static spi_device_handle_t sd_spi;
+//static spi_device_handle_t sd_spi;
 static lv_disp_drv_t disp_drv;
 static esp_lcd_panel_handle_t disp_panel;
 static spi_device_handle_t touch_spi;
@@ -110,8 +111,13 @@ esp_err_t bsp_init(void) {
   spi_bus_init(SHARED_SPI_HOST, SHARED_SPI_MISO, SHARED_SPI_MOSI, SHARED_SPI_CLK,
                DISP_BUF_SIZE_BYTES, 1, -1, -1);
 
-  esp3d_log("Attaching SD card to SPI bus...");
-  ESP_ERROR_CHECK(spi_bus_add_device(SHARED_SPI_HOST, &sd_spi_cfg, &sd_spi));
+  // Make sure SD card is deselected (/CS is high)
+	esp_rom_gpio_pad_select_gpio(ESP3D_SD_CS_PIN);
+  gpio_set_direction(ESP3D_SD_CS_PIN, GPIO_MODE_OUTPUT);
+  gpio_set_level(ESP3D_SD_CS_PIN, 1);
+
+  //esp3d_log("Attaching SD card to SPI bus...");
+  //ESP_ERROR_CHECK(spi_bus_add_device(SHARED_SPI_HOST, &sd_spi_cfg, &sd_spi));
 
   esp3d_log("Attaching display panel to SPI bus...");
   esp_lcd_panel_io_handle_t disp_io_handle;
