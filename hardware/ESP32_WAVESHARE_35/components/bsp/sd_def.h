@@ -20,8 +20,7 @@ extern "C" {
 #define SPI_ALLOCATION_SIZE (4 * 1024)
 
 //(range 400kHz - 20MHz for SDSPI, less for other devices)
-// default is 12MHz
-#define ESP3D_SD_FREQ (12*1000)
+#define ESP3D_SD_FREQ (10*1000)
 
 #define SD_SPI_HOST SPI2_HOST //1
 //#define SD_SPI_HOST SPI3_HOST  // 2
