@@ -28,12 +28,58 @@ ESP3DGCodeParserService esp3dGcodeParser;
 
 const char* emmergencyGcodeCommand[] = {"M112", "M410", "M999"};
 const char* emmergencyESP3DCommand[] = {"[ESP701]"};
-const char* pollingCommands[] = {"M105",  // Temperatures
-                                 "M114",  // Positions
-                                 "M220",  // Speed
-                                 ""};
+const char* pollingCommands[] = {
+    "M105",  // Temperatures
+    "M114",  // Positions
+    "M220",  // Speed
+};
+
+uint64_t pollingCommandsLastUpdate[] = {
+    0,  // Temperatures
+    0,  // Positions
+    0,  // Speed
+};
+
+const char* screenCommands[] = {"M117",  // TFT screen output
+                                ""};
+const char* no_ack_commands[] = {  // Commands that do not need an ack
+    ""};
+
+const char* fwCommands[] = {"M110 N0",  // reset stream numbering
+                            ""};
+uint64_t ESP3DGCodeParserService::getPollingCommandsLastRun(uint8_t index) {
+  if (index < ESP3D_POLLING_COMMANDS_COUNT) {
+    return pollingCommandsLastUpdate[index];
+  }
+  esp3d_log_e("Error polling command index out of range");
+  return 0;
+}
+bool ESP3DGCodeParserService::setPollingCommandsLastRun(uint8_t index,
+                                                        uint64_t value) {
+  if (index < ESP3D_POLLING_COMMANDS_COUNT) {
+    pollingCommandsLastUpdate[index] = value;
+    return true;
+  } else {
+    esp3d_log_e("Error polling command index out of range");
+    return false;
+  }
+}
+const char* ESP3DGCodeParserService::getFwCommandString(FW_GCodeCommand cmd) {
+  return fwCommands[(uint8_t)cmd];
+}
 const char** ESP3DGCodeParserService::getPollingCommands() {
   return pollingCommands;
+}
+
+bool ESP3DGCodeParserService::forwardToScreen(const char* command) {
+  for (uint8_t i = 0; strlen(screenCommands[i]) != 0; i++) {
+    if (strncmp(command, screenCommands[i], strlen(screenCommands[i])) == 0) {
+      esp3dTftValues.set_string_value(ESP3DValuesIndex::status_bar_label,
+                                      &command[strlen(screenCommands[i])]);
+      return true;
+    }
+  }
+  return false;
 }
 
 ESP3DGCodeParserService::ESP3DGCodeParserService() {
@@ -44,7 +90,18 @@ ESP3DGCodeParserService::~ESP3DGCodeParserService() {
   _isMultiLineReportOnGoing = false;
 }
 
-bool ESP3DGCodeParserService::hasOkAck(const char* data) { return true; }
+// check if command generate an ack
+// by default almost all commands need an ack
+bool ESP3DGCodeParserService::hasAck(const char* command) {
+  for (uint8_t i = 0; strlen(no_ack_commands[i]) != 0; i++) {
+    if (strncmp(command, no_ack_commands[i], strlen(no_ack_commands[i])) == 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// TODO: implement multi line report detection
 bool ESP3DGCodeParserService::hasMultiLineReport(const char* data) {
   return false;
 }
@@ -175,6 +232,9 @@ bool ESP3DGCodeParserService::processCommand(const char* data) {
         esp3dTftValues.set_string_value(
             ESP3DValuesIndex::bed_target_temperature, "#");
       }
+      setPollingCommandsLastRun(
+          ESP3D_POLLING_COMMANDS_INDEX_TEMPERATURE_TEMPERATURE,
+          esp3d_hal::millis());
       return true;
       // is position but not bed leveling
     } else if (strstr(data, "X:") != nullptr &&
@@ -198,6 +258,9 @@ bool ESP3DGCodeParserService::processCommand(const char* data) {
         esp3dTftValues.set_string_value(ESP3DValuesIndex::position_x, ptrx);
         esp3dTftValues.set_string_value(ESP3DValuesIndex::position_y, ptry);
         esp3dTftValues.set_string_value(ESP3DValuesIndex::position_z, ptrz);
+        setPollingCommandsLastRun(
+            ESP3D_POLLING_COMMANDS_INDEX_TEMPERATURE_POSITION,
+            esp3d_hal::millis());
         return true;
       } else {
         esp3d_log_e("Error parsing positions");
@@ -209,6 +272,9 @@ bool ESP3DGCodeParserService::processCommand(const char* data) {
         ptrfr += 3;
         ptrpc[0] = '\0';
         esp3dTftValues.set_string_value(ESP3DValuesIndex::speed, ptrfr);
+        setPollingCommandsLastRun(
+            ESP3D_POLLING_COMMANDS_INDEX_TEMPERATURE_SPEED,
+            esp3d_hal::millis());
         return true;
       } else {
         esp3d_log_e("Error parsing progress");
@@ -336,7 +402,7 @@ ESP3DDataType ESP3DGCodeParserService::getType(const char* data) {
 
   // is it ack ?
   if ((ptr[0] == 'o' && ptr[1] == 'k') &&
-      (ptr[2] == '\n' || ptr[2] == '\r' || ptr[2] == ' ')) {
+      (ptr[2] == '\n' || ptr[2] == '\r' || ptr[2] == ' ' || ptr[2] == 0x0)) {
     return ESP3DDataType::ack;
   }
 
@@ -388,6 +454,7 @@ ESP3DDataType ESP3DGCodeParserService::getType(const char* data) {
       strstr(ptr, "heating") == ptr || strstr(ptr, "echo:busy") == ptr ||
       strstr(ptr, "echo:processing") == ptr ||
       strstr(ptr, "echo:heating") == ptr) {
+    esp3d_log("Status: %s", esp3d_string::str_trim(ptr).c_str());
     return ESP3DDataType::status;
   }
   /*

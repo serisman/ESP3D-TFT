@@ -28,6 +28,7 @@
 #include "esp3d_settings.h"
 #include "esp3d_string.h"
 #include "freertos/task.h"
+#include "gcode_host/esp3d_gcode_host_service.h"
 #include "tasks_def.h"
 
 ESP3DRenderingClient renderingClient;
@@ -63,10 +64,9 @@ bool ESP3DRenderingClient::sendGcode(const char *data) {
   } else {
     cmd = data;
   }
-  return esp3dCommands.dispatch(cmd.c_str(), esp3dCommands.getOutputClient(),
-                                requestId, ESP3DMessageType::unique,
-                                ESP3DClientType::rendering,
-                                ESP3DAuthenticationLevel::admin);
+  return esp3dCommands.dispatch(
+      cmd.c_str(), ESP3DClientType::stream, requestId, ESP3DMessageType::unique,
+      ESP3DClientType::rendering, ESP3DAuthenticationLevel::admin);
 }
 
 ESP3DRenderingClient::ESP3DRenderingClient() {
@@ -119,6 +119,7 @@ bool ESP3DRenderingClient::begin() {
 
 void ESP3DRenderingClient::handle() {
   static uint64_t now = esp3d_hal::millis();
+  static uint8_t polling_cmd_index = 0;
   if (_started) {
     if (getRxMsgsCount() > 0) {
       if (pdTRUE == xSemaphoreTake(_xGuiSemaphore, portMAX_DELAY)) {
@@ -132,16 +133,38 @@ void ESP3DRenderingClient::handle() {
       }
     }
     if (_polling_on) {
-      if (esp3d_hal::millis() - now > ESP3D_POLLING_INTERVAL) {
+      if (esp3d_hal::millis() - now >
+          ESP3D_POLLING_INTERVAL / ESP3D_POLLING_COMMANDS_COUNT) {
+        esp3d_log_d("Polling interval reached, list size is %d",
+                    gcodeHostService.getScriptsListSize());
         const char **pollingCommands = esp3dGcodeParser.getPollingCommands();
-        for (uint8_t i = 0; strlen(pollingCommands[i]) != 0; i++) {
-          sendGcode(pollingCommands[i]);
+        if (pollingCommands == nullptr) {
+          return;
         }
+        // reset index if needed
+        if (polling_cmd_index >= ESP3D_POLLING_COMMANDS_COUNT)
+          polling_cmd_index = 0;
+        // send command if not already in queue and last response is too old
+        bool is_in_queue = gcodeHostService.hasStreamListCommand(
+            pollingCommands[polling_cmd_index]);
+        bool is_recently_processed =
+            ((esp3d_hal::millis() -
+              esp3dGcodeParser.getPollingCommandsLastRun(polling_cmd_index)) <
+             ESP3D_POLLING_INTERVAL);
+        esp3d_log_d("Command %s in queue: %d, recently processed: %d",
+                    pollingCommands[polling_cmd_index], is_in_queue,
+                    is_recently_processed);
+        if (!is_in_queue && !is_recently_processed) {
+          esp3d_log_d("Sending command %s", pollingCommands[polling_cmd_index]);
+          sendGcode(pollingCommands[polling_cmd_index]);
+        } else {
+          esp3d_log_w("Command %s already in queue or recently processed",
+                      pollingCommands[i]);
+        }
+        polling_cmd_index++;
         now = esp3d_hal::millis();
       }
     }
-  } else {
-    now = esp3d_hal::millis();
   }
 }
 
